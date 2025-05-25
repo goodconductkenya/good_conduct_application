@@ -78,9 +78,7 @@
       logoutBtn.onclick = logoutUser;
 
       Backendless.UserService.getCurrentUser().then(user => {
-        if (user) {
-          showLoggedInUI(user);
-        }
+        if (user) showLoggedInUI(user);
       });
     });
 
@@ -100,7 +98,6 @@
         <div class="section">
           <h3>Create Account</h3>
           <p>Please create an account to begin your application.</p>
-          <input type="text" id="regName" placeholder="Full Name" required />
           <input type="email" id="regEmail" placeholder="Email" required />
           <input type="password" id="regPassword" placeholder="Password" required />
           <button onclick="registerUser()">Register</button>
@@ -113,7 +110,9 @@
       const password = document.getElementById("loginPassword").value;
       try {
         const user = await Backendless.UserService.login(email, password, true);
+        await Backendless.UserService.setCurrentUser(user);
         showLoggedInUI(user);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       } catch (err) {
         alert("Login failed: " + err.message);
       }
@@ -157,8 +156,9 @@
       const certPath = `/certificates/${user.objectId}/certificate.pdf`;
 
       const ApplicationTable = Backendless.Data.of("Application");
-      const existing = await ApplicationTable.findFirst({ where: `user.objectId = '${user.objectId}'` });
-
+      const query = new Backendless.DataQueryBuilder().setWhereClause(`user.objectId = '${user.objectId}'`);
+      const existingList = await ApplicationTable.find(query);
+      const existing = existingList[0];
       let showForm = !existing;
 
       appDiv.innerHTML = `
@@ -193,7 +193,9 @@
     }
 
     function showApplicationForm() {
-      loadApplicationForm(Backendless.UserService.getCurrentUser());
+      const user = Backendless.UserService.getCurrentUser();
+      if (user) loadApplicationForm(user);
+      else alert("Session expired. Please log in again.");
     }
 
     async function submitApplication(event) {
