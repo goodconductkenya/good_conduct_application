@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Admin - Certificate Upload</title>
+  <script src="https://unpkg.com/backendless@7.2.5/dist/backendless.min.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: auto; padding: 20px; }
+    h1 { color: #2c3e50; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 10px; }
+    button { padding: 5px 10px; }
+    input[type="file"] { width: 100%; }
+  </style>
+</head>
+<body>
+  <h1>Admin Portal - Good Conduct Certificates</h1>
+
+  <div id="adminLogin">
+    <input type="email" id="adminEmail" placeholder="Admin Email" />
+    <input type="password" id="adminPassword" placeholder="Password" />
+    <button onclick="adminLogin()">Login</button>
+  </div>
+
+  <div id="adminPanel" style="display:none;">
+    <h2>Applicants</h2>
+    <table id="applicantsTable">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>ID Number</th>
+          <th>Status</th>
+          <th>Payment</th>
+          <th>Certificate</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <button onclick="logout()">Logout</button>
+  </div>
+
+  <script>
+    const APP_ID = "9B2BFE67-C986-40AC-BFE8-BAE522A19615";
+    const API_KEY = "3379D979-5EA8-497C-B98B-0A996E643C7A";
+    Backendless.initApp({ appId: APP_ID, apiKey: API_KEY });
+
+    const adminEmail = "goodconductkenya@gmail.com"; // Replace with actual admin email
+
+    async function adminLogin() {
+      const email = document.getElementById("adminEmail").value;
+      const password = document.getElementById("adminPassword").value;
+      try {
+        const user = await Backendless.UserService.login(email, password, true);
+        if (user.email === adminEmail) {
+          document.getElementById("adminLogin").style.display = "none";
+          document.getElementById("adminPanel").style.display = "block";
+          loadApplicants();
+        } else {
+          alert("Access denied: Not an admin.");
+        }
+      } catch (err) {
+        alert("Login failed: " + err.message);
+      }
+    }
+
+    async function loadApplicants() {
+      const Application = Backendless.Data.of("Application");
+      const applications = await Application.find();
+
+      const tbody = document.querySelector("#applicantsTable tbody");
+      tbody.innerHTML = "";
+
+      for (const app of applications) {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${app.firstName || ''} ${app.surname || ''}</td>
+          <td>${app.email}</td>
+          <td>${app.IdNumber}</td>
+          <td>${app.status || 'processing'}</td>
+          <td>
+            <select onchange="updatePayment('${app.objectId}', this.value)">
+              <option value="false" ${!app.paid ? 'selected' : ''}>Not Paid</option>
+              <option value="true" ${app.paid ? 'selected' : ''}>Paid</option>
+            </select>
+          </td>
+          <td><input type="file" onchange="uploadCertificate('${app.user.objectId}', this.files[0])" /></td>
+          <td><button onclick="markGenerated('${app.objectId}')">Mark as Generated</button></td>
+        `;
+        tbody.appendChild(row);
+      }
+    }
+
+    async function uploadCertificate(userId, file) {
+      if (!file) return alert("No file selected.");
+      try {
+        await Backendless.Files.upload(file, `/certificates/${userId}`, true);
+        alert("Certificate uploaded successfully.");
+      } catch (err) {
+        alert("Upload failed: " + err.message);
+      }
+    }
+
+    async function markGenerated(appId) {
+      try {
+        const app = await Backendless.Data.of("Application").findById(appId);
+        app.status = "generated";
+        await Backendless.Data.of("Application").save(app);
+        alert("Marked as generated.");
+        loadApplicants();
+      } catch (err) {
+        alert("Failed to update status: " + err.message);
+      }
+    }
+
+    async function updatePayment(appId, value) {
+      try {
+        const app = await Backendless.Data.of("Application").findById(appId);
+        app.paid = value === "true";
+        await Backendless.Data.of("Application").save(app);
+        alert("Payment status updated.");
+      } catch (err) {
+        alert("Failed to update payment: " + err.message);
+      }
+    }
+
+    function logout() {
+      Backendless.UserService.logout().then(() => {
+        location.reload();
+      });
+    }
+  </script>
+</body>
+</html>
