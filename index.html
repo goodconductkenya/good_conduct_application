@@ -12,25 +12,21 @@
     }
     .login-btn { background-color: #3498db; color: white; }
     .register-btn { background-color: #2ecc71; color: white; }
-    .logout-btn { float: right; background-color: #e74c3c; color: white; }
-    .apply-btn { float: right; background-color: #2980b9; color: white; margin-right: 10px; }
     input, select {
       width: 100%; padding: 10px; margin: 5px 0 15px 0; border: 1px solid #ccc; border-radius: 4px;
     }
     .section { margin-top: 30px; padding: 20px; border: 1px solid #ccc; border-radius: 10px; }
-    .status-blue { color: #3498db; font-weight: bold; }
-    .status-green { color: #27ae60; font-weight: bold; }
+    .top-right { position: absolute; top: 20px; right: 20px; }
+    #applyAgainBtn { background-color: #2980b9; color: white; }
+    .status-processing { color: blue; font-weight: bold; }
+    .status-generated { color: green; font-weight: bold; }
   </style>
 </head>
 <body>
   <h1>Good Conduct Application</h1>
-  <div style="text-align:center;" id="authButtons">
+  <div id="topControls" style="text-align:center;">
     <button class="login-btn" id="loginBtn">Login</button>
     <button class="register-btn" id="registerBtn">Apply Now</button>
-  </div>
-  <div>
-    <button class="apply-btn" id="applyAgainBtn" style="display:none;">Apply</button>
-    <button class="logout-btn" id="logoutBtn" style="display:none;">Logout</button>
   </div>
 
   <div id="app"></div>
@@ -41,21 +37,11 @@
     Backendless.initApp({ appId: APP_ID, apiKey: API_KEY });
 
     const appDiv = document.getElementById("app");
-    const logoutBtn = document.getElementById("logoutBtn");
-    const applyAgainBtn = document.getElementById("applyAgainBtn");
+    const topControls = document.getElementById("topControls");
 
-    document.addEventListener("DOMContentLoaded", async () => {
+    document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("loginBtn").onclick = showLogin;
       document.getElementById("registerBtn").onclick = showRegister;
-      logoutBtn.onclick = logoutUser;
-      applyAgainBtn.onclick = () => loadApplicationForm(currentUser, false);
-
-      try {
-        const currentUser = await Backendless.UserService.getCurrentUser();
-        if (currentUser) {
-          loadApplicationForm(currentUser);
-        }
-      } catch {}
     });
 
     function showLogin() {
@@ -72,10 +58,11 @@
     function showRegister() {
       appDiv.innerHTML = `
         <div class="section">
-          <h3>Register</h3>
+          <h3>Create Account</h3>
+          <p>Please create an account first in order to apply.</p>
           <input type="email" id="regEmail" placeholder="Email" required />
           <input type="password" id="regPassword" placeholder="Password" required />
-          <button onclick="registerUser()">Register</button>
+          <button onclick="registerUser()">Create Account</button>
         </div>
       `;
     }
@@ -90,7 +77,7 @@
 
       try {
         await Backendless.UserService.register(user);
-        alert("Registration successful. Please log in.");
+        alert("Account created successfully. Please log in to continue.");
         showLogin();
       } catch (err) {
         alert("Registration failed: " + err.message);
@@ -108,52 +95,54 @@
       }
     }
 
-    async function logoutUser() {
-      await Backendless.UserService.logout();
-      location.reload();
-    }
+    async function loadApplicationForm(user) {
+      topControls.innerHTML = `
+        <div class="top-right">
+          <button onclick="logout()">Logout</button>
+        </div>
+      `;
 
-    async function loadApplicationForm(user, checkExisting = true) {
-      document.getElementById("authButtons").style.display = "none";
-      logoutBtn.style.display = "inline-block";
-      applyAgainBtn.style.display = "none";
+      const appTable = Backendless.Data.of("Application");
+      const appData = await appTable.findFirst({ where: `user.objectId = '${user.objectId}'` });
 
-      const certId = "PCC-" + user.objectId.slice(0, 8).toUpperCase();
-      const certPath = `/certificates/${user.objectId}/certificate.pdf`;
+      const hasApplied = !!appData;
 
-      let hasApplied = false;
-      if (checkExisting) {
-        const existing = await Backendless.Data.of("Application").findFirst({ where: `user.objectId = '${user.objectId}'` });
-        hasApplied = !!existing;
+      let formHtml = '';
+      if (!hasApplied) {
+        formHtml = `
+          <div class="section" id="applicationFormSection">
+            <h3>Good Conduct Certificate Application</h3>
+            <p>Please fill in the details below to begin your application for a Police Clearance Certificate (Certificate of Good Conduct).</p>
+            <form onsubmit="submitApplication(event)">
+              <input type="text" id="firstName" placeholder="First Name" required />
+              <input type="text" id="middleName" placeholder="Middle Name" required />
+              <input type="text" id="surname" placeholder="Surname" required />
+              <input type="text" id="idNumber" placeholder="ID Number" required />
+              <input type="email" id="email" placeholder="Email" value="${user.email}" required />
+              <input type="text" id="mobileNo" placeholder="Mobile No." required />
+              <button type="submit">Submit Application</button>
+            </form>
+          </div>
+        `;
       }
 
       appDiv.innerHTML = `
-        <div class="section" id="formSection" ${hasApplied ? 'style="display:none;"' : ''}>
-          <h3>Good Conduct Certificate Application</h3>
-          <p>Please fill in the details below to begin your application for a Police Clearance Certificate (Certificate of Good Conduct).</p>
-          <form onsubmit="submitApplication(event)">
-            <input type="text" id="firstName" placeholder="First Name" required />
-            <input type="text" id="middleName" placeholder="Middle Name" required />
-            <input type="text" id="surname" placeholder="Surname" required />
-            <input type="text" id="idNumber" placeholder="ID Number" required />
-            <input type="email" id="email" placeholder="Email" required />
-            <input type="text" id="mobileNo" placeholder="Mobile No." required />
-            <button type="submit">Submit Application</button>
-          </form>
-        </div>
-        <div class="section" id="statusSection" style="display: ${hasApplied ? 'block' : 'none'};">
+        ${formHtml}
+        <div class="section" id="statusSection" style="display:${hasApplied ? 'block' : 'none'}">
           <h3>Status</h3>
           <p id="statusMessage">Checking your certificate status...</p>
         </div>
-        <div class="section" id="downloadSection" style="display: ${hasApplied ? 'block' : 'none'};">
+        <div class="section" id="downloadSection" style="display:${hasApplied ? 'block' : 'none'}">
           <h3>Download Certificate</h3>
           <div id="downloadContent"></div>
+        </div>
+        <div id="applyAgain" style="display: ${hasApplied ? 'block' : 'none'}; text-align:right;">
+          <button id="applyAgainBtn" onclick="showResubmitForm()">Apply</button>
         </div>
       `;
 
       if (hasApplied) {
-        checkCertificate(user.objectId, certId, certPath);
-        applyAgainBtn.style.display = "inline-block";
+        checkCertificate(user.objectId);
       }
     }
 
@@ -173,54 +162,65 @@
       try {
         await Backendless.Data.of("Application").save(data);
         alert("Application submitted successfully!");
-        document.getElementById("formSection").style.display = "none";
+
+        // Hide form and show status/download
+        document.getElementById("applicationFormSection").style.display = "none";
         document.getElementById("statusSection").style.display = "block";
         document.getElementById("downloadSection").style.display = "block";
-        checkCertificate(user.objectId, "PCC-" + user.objectId.slice(0, 8).toUpperCase(), `/certificates/${user.objectId}/certificate.pdf`);
-        applyAgainBtn.style.display = "inline-block";
+        document.getElementById("applyAgain").style.display = "block";
+
+        checkCertificate(user.objectId);
       } catch (err) {
         alert("Failed to submit: " + err.message);
       }
     }
 
-    async function checkCertificate(userId, certId, certPath) {
+    async function checkCertificate(userId) {
       try {
         const app = await Backendless.Data.of("Application").findFirst({ where: `user.objectId = '${userId}'` });
 
         const statusMsg = document.getElementById("statusMessage");
         const downloadContent = document.getElementById("downloadContent");
 
-        if (app.status === "processing") {
-          statusMsg.innerHTML = '<span class="status-blue">Processing</span><br>Please allow 1–2 working days for processing.';
-          downloadContent.innerHTML = "";
-        } else if (app.status === "generated") {
+        const certId = "PCC-" + userId.slice(0, 8).toUpperCase();
+        const certUrl = app?.certificateUrl;
+
+        if (certUrl) {
           if (app.paid === true) {
-            statusMsg.innerHTML = '<span class="status-green">Certificate Generated! Download your certificate below.</span>';
+            statusMsg.innerHTML = `<span class="status-generated">Certificate Generated!</span>`;
             downloadContent.innerHTML = `
               <p><strong>${certId}</strong></p>
-              <p>Certificate Generated!</p>
-              <a href="${certPath}" target="_blank">
+              <p>Certificate is ready for download.</p>
+              <a href="${certUrl}" target="_blank">
                 <button style="background-color:#2ecc71;color:white;">Download Certificate</button>
               </a>
             `;
           } else {
-            statusMsg.innerHTML = '<span class="status-green">Certificate Generated! Payment required.</span>';
+            statusMsg.innerHTML = `<span class="status-generated">Certificate Generated!</span> Payment required.`;
             downloadContent.innerHTML = `
               <p><strong>${certId}</strong></p>
-              <p>Payment is required before downloading.</p>
               <a href="${app.paymentLink || '#'}" target="_blank">
                 <button style="background-color:#f39c12;color:white;">Pay Now</button>
               </a>
             `;
           }
         } else {
-          statusMsg.innerText = "Status unknown. Please contact support.";
+          statusMsg.innerHTML = `<span class="status-processing">Processing</span><br><small>Please allow 1–2 working days for processing.</small>`;
           downloadContent.innerHTML = "";
         }
-
       } catch (err) {
         document.getElementById("statusMessage").innerText = "Error checking certificate: " + err.message;
       }
+    }
+
+    function logout() {
+      Backendless.UserService.logout().then(() => {
+        location.reload();
+      });
+    }
+
+    function showResubmitForm() {
+      loadApplicationForm(Backendless.UserService.getCurrentUser());
     }
   </script>
 </body>
