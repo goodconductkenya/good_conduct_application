@@ -1,0 +1,190 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Good Conduct Application</title>
+  <script src="https://unpkg.com/backendless@7.2.5/dist/backendless.min.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: auto; padding: 20px; }
+    h1 { text-align: center; color: #2c3e50; }
+    button {
+      padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; margin: 5px;
+    }
+    .login-btn { background-color: #3498db; color: white; }
+    .register-btn { background-color: #2ecc71; color: white; }
+    input, select {
+      width: 100%; padding: 10px; margin: 5px 0 15px 0; border: 1px solid #ccc; border-radius: 4px;
+    }
+    .section { margin-top: 30px; padding: 20px; border: 1px solid #ccc; border-radius: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Good Conduct Application</h1>
+  <div style="text-align:center;">
+    <button class="login-btn" onclick="showLogin()">Login</button>
+    <button class="register-btn" onclick="showRegister()">Register</button>
+  </div>
+
+  <div id="app"></div>
+
+  <script>
+    const APP_ID = "9B2BFE67-C986-40AC-BFE8-BAE522A19615";
+    const API_KEY = "3379D979-5EA8-497C-B98B-0A996E643C7A";
+    Backendless.initApp({ appId: APP_ID, apiKey: API_KEY });
+
+    const appDiv = document.getElementById("app");
+
+    function showLogin() {
+      appDiv.innerHTML = \`
+        <div class="section">
+          <h3>Login</h3>
+          <input type="email" id="loginEmail" placeholder="Email" required />
+          <input type="password" id="loginPassword" placeholder="Password" required />
+          <button onclick="loginUser()">Login</button>
+        </div>
+      \`;
+    }
+
+    function showRegister() {
+      appDiv.innerHTML = \`
+        <div class="section">
+          <h3>Register</h3>
+          <input type="text" id="regName" placeholder="Full Name" required />
+          <input type="email" id="regEmail" placeholder="Email" required />
+          <input type="password" id="regPassword" placeholder="Password" required />
+          <button onclick="registerUser()">Register</button>
+        </div>
+      \`;
+    }
+
+    async function loginUser() {
+      const email = document.getElementById("loginEmail").value;
+      const password = document.getElementById("loginPassword").value;
+      try {
+        const user = await Backendless.UserService.login(email, password, true);
+        loadApplicationForm(user);
+      } catch (err) {
+        alert("Login failed: " + err.message);
+      }
+    }
+
+    async function registerUser() {
+      const name = document.getElementById("regName").value;
+      const email = document.getElementById("regEmail").value;
+      const password = document.getElementById("regPassword").value;
+
+      const user = new Backendless.User();
+      user.email = email;
+      user.name = name;
+      user.password = password;
+
+      try {
+        await Backendless.UserService.register(user);
+        alert("Registration successful. Please log in.");
+        showLogin();
+      } catch (err) {
+        alert("Registration failed: " + err.message);
+      }
+    }
+
+    async function loadApplicationForm(user) {
+      const certId = "PCC-" + user.objectId.slice(0, 8).toUpperCase();
+      const certPath = `/certificates/${user.objectId}/certificate.pdf`;
+
+      const ApplicationTable = Backendless.Data.of("Application");
+
+      // Check if user already applied
+      const existing = await ApplicationTable.findFirst({ where: \`user.objectId = '\${user.objectId}'\` });
+
+      appDiv.innerHTML = \`
+        <div class="section">
+          <h3>Good Conduct Certificate Application</h3>
+          <form onsubmit="submitApplication(event)">
+            <input type="text" id="firstName" placeholder="First Name" required />
+            <input type="text" id="middleName" placeholder="Middle Name" required />
+            <input type="text" id="surname" placeholder="Surname" required />
+            <input type="text" id="idNumber" placeholder="ID Number" required />
+            <input type="email" id="email" placeholder="Email" required />
+            <input type="text" id="mobileNo" placeholder="Mobile No." required />
+            <button type="submit">Submit Application</button>
+          </form>
+        </div>
+        <div class="section" id="statusSection">
+          <h3>Status</h3>
+          <p id="statusMessage">Checking your certificate status...</p>
+        </div>
+        <div class="section" id="downloadSection">
+          <h3>Download Certificate</h3>
+          <div id="downloadContent"></div>
+        </div>
+      \`;
+
+      checkCertificate(user.objectId, certId, certPath);
+    }
+
+    async function submitApplication(event) {
+      event.preventDefault();
+      const user = await Backendless.UserService.getCurrentUser();
+      const data = {
+        firstName: document.getElementById("firstName").value,
+        middleName: document.getElementById("middleName").value,
+        surname: document.getElementById("surname").value,
+        IdNumber: document.getElementById("idNumber").value,
+        email: document.getElementById("email").value,
+        mobileNo: document.getElementById("mobileNo").value,
+        status: "processing",
+        user: { objectId: user.objectId }
+      };
+      try {
+        await Backendless.Data.of("Application").save(data);
+        alert("Application submitted successfully!");
+        loadApplicationForm(user);
+      } catch (err) {
+        alert("Failed to submit: " + err.message);
+      }
+    }
+
+    async function checkCertificate(userId, certId, certPath) {
+      try {
+        const fileList = await Backendless.Files.list(`/certificates/${userId}`);
+        const certFile = fileList.find(file => file.name === "certificate.pdf");
+
+        const app = await Backendless.Data.of("Application").findFirst({ where: \`user.objectId = '\${userId}'\` });
+
+        const statusMsg = document.getElementById("statusMessage");
+        const downloadContent = document.getElementById("downloadContent");
+
+        if (certFile) {
+          if (app.paid === true) {
+            statusMsg.innerHTML = "Certificate Generated! Download your certificate below.";
+            downloadContent.innerHTML = \`
+              <p><strong>\${certId}</strong></p>
+              <p>Certificate Generated!</p>
+              <p>\${new Date(certFile.createdOn).toLocaleString()}</p>
+              <a href="\${certFile.publicUrl}" target="_blank">
+                <button style="background-color:#2ecc71;color:white;">Download Certificate</button>
+              </a>
+            \`;
+          } else {
+            statusMsg.innerHTML = "Certificate Generated! Payment required.";
+            downloadContent.innerHTML = \`
+              <p><strong>\${certId}</strong></p>
+              <p>Payment is required before downloading.</p>
+              <a href="\${app.paymentLink || '#'}" target="_blank">
+                <button style="background-color:#f39c12;color:white;">Pay Now</button>
+              </a>
+            \`;
+          }
+        } else {
+          statusMsg.innerHTML = "Certificate is being Processed! Wait 1-2 working days.";
+          downloadContent.innerHTML = "";
+        }
+
+      } catch (err) {
+        document.getElementById("statusMessage").innerText = "Error checking certificate: " + err.message;
+      }
+    }
+  </script>
+</body>
+</html>
